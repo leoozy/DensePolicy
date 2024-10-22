@@ -183,7 +183,6 @@ scripts/chat/kubernetes/k8s.yml
 .idea/
 *.whl
 temp/
-figures/
 transformers/
 cache/
 plot/
