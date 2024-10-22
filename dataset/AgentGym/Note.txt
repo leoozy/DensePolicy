@@ -1,0 +1,7 @@
+We modified the following file:
+
+The environment requirement of dataset/AgentGym/agentenv/pyproject.toml #requires-python = ">=3.11"
+
+Change all the | of argument type into Union[]
+
+The environment requirement of dataset/AgentGym/agentenv-lmrlgym/lmrlgym/requirements.txt # textworld @ git+https://github.com/jxihong/TextWorld.git@main (Install from source by ourself)
