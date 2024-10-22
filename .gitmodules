@@ -15,7 +15,7 @@
 	url = https://github.com/xingyaoww/Megatron-LLM.git
 [submodule "dataset/AgentGym"]
 	path = dataset/AgentGym
-	url = https://github.com/zhao-ht/AgentGym_Mine
+	url = git@github.com:zhao-ht/AgentGym_Mine.git
 [submodule "TreeDPO"]
 	path = TreeDPO
 	url = git@github.com:zhao-ht/TreeDPO.git
