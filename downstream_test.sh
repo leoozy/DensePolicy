@@ -22,65 +22,6 @@ NUM_DEVICE=${#cuda_array[@]}
 
 MAIN_DIR='.'
 
-# Set CKPT_DIR and SAVE_DIR based on MODEL_DIR
-if [[ $MODEL_DIR == *"full"* ]]; then
-    CKPT_DIR=$MAIN_DIR"/TreeDPO/saves"
-    SAVE_DIR="eval_result"
-else
-    CKPT_DIR=$MAIN_DIR"/TreeDPO/models"
-    SAVE_DIR="eval_result/base"
-fi
-
-
-# Compute the Port
-if [ -z "$CUSTOM_PORT" ]; then
-    PORT=$((8000+TEST_ID))
-    KILL_COMMAND=""
-#    KILL_COMMAND="&& tmux send-keys -t server$TEST_ID C-c"
-
-    echo "Loading ckpt from $CKPT_DIR"
-    echo "Saving eval result to $SAVE_DIR"
-
-    echo "Launching vLLM server..."
-    # Remove the log file if it exists
-    LOG_FILE="server_output_$TEST_ID.log"
-    rm -f $LOG_FILE
-
-    # Start serverTEST_ID tmux window
-    if ! tmux has-session -t server$TEST_ID 2>/dev/null; then
-      tmux new-session -d -s server$TEST_ID
-      tmux send-keys -t server$TEST_ID 'export PATH="/root/anaconda3/bin/:$PATH"' Enter
-      tmux send-keys -t server$TEST_ID "tmux set mouse on" Enter
-      tmux send-keys -t server$TEST_ID "source activate agent_env" Enter
-    fi
-
-    tmux send-keys -t server$TEST_ID "cd $MAIN_DIR/LLM-Agent-Eval" Enter
-
-    # Launch vllm server
-    if [ "$MODEL_DIR" == "Mistral-7B-v0.1" ]; then
-      DTYPE="float16"
-    else
-      DTYPE="auto"
-    fi
-    echo "Launching vLLM in TMUTEST_ID server$TEST_ID with Port $PORT on GPU $CUDA_VISIBLE_DEVICES, DTYPE: $DTYPE"
-    tmux send-keys -t server$TEST_ID "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES python -m vllm.entrypoints.openai.api_server --port $PORT --model $CKPT_DIR/$MODEL_DIR --served-model-name $MODEL_DIR --tensor-parallel-size $NUM_DEVICE --dtype $DTYPE &> $LOG_FILE"  Enter
-
-    # Wait for server startup
-    while ! grep -q "Application startup complete" $LOG_FILE; do
-        sleep 1
-    done
-
-    echo "vLLM server has launched"
-
-else
-    PORT=$CUSTOM_PORT
-    KILL_COMMAND=""
-    echo "Using vLLM with Port $PORT"
-fi
-
-# Detach serverTEST_ID tmux window
-#tmux detach-client -t server$TEST_ID
-
 
 # Launch AgentGym server
 case $TASK in
@@ -125,15 +66,15 @@ esac
 
 
 
-# Start agentTEST_ID tmux window
-if ! tmux has-session -t agent$TEST_ID 2>/dev/null; then
-  tmux new-session -d -s agent$TEST_ID
-  tmux send-keys -t agent$TEST_ID 'export PATH="/root/anaconda3/bin/:$PATH"' Enter
-  tmux send-keys -t agent$TEST_ID "source activate agent_env" Enter
-  tmux send-keys -t agent$TEST_ID "tmux set mouse on" Enter
-fi
-
-tmux send-keys -t agent$TEST_ID "cd $MAIN_DIR/LLM-Agent-Eval" Enter
+## Start agentTEST_ID tmux window
+#if ! tmux has-session -t agent$TEST_ID 2>/dev/null; then
+#  tmux new-session -d -s agent$TEST_ID
+#  tmux send-keys -t agent$TEST_ID 'export PATH="/root/anaconda3/bin/:$PATH"' Enter
+#  tmux send-keys -t agent$TEST_ID "source activate agent_env" Enter
+#  tmux send-keys -t agent$TEST_ID "tmux set mouse on" Enter
+#fi
+#
+#tmux send-keys -t agent$TEST_ID "cd $MAIN_DIR/LLM-Agent-Eval" Enter
 
 
 # Compute distributed id
@@ -170,6 +111,7 @@ elif [ "$TASK" = "math" ]; then
   if [ "$METHOD" = "codeact_agent" ]; then
       tmux send-keys -t agent$TEST_ID "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES python downstream_test.py --dataset_name math --planning_method codeact_agent --in_context_number 1 --model_name $MODEL_DIR --host $PORT --max_turn 10 --exp_id 0 --distributed_test --distributed_id $DIS_ID --distributed_number $TOTAL_DIS --resume --resume_from_merge $KILL_COMMAND" Enter
   elif [ "$METHOD" = "codeact_agent_tree" ]; then
+      echo "running codeact_agent_tree"
       tmux send-keys -t agent$TEST_ID "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES python downstream_test.py --dataset_name math --planning_method codeact_agent_tree --in_context_number 1  --model_name $MODEL_DIR --host $PORT --max_steps 8 --exp_id 0 --contrastive_method temperature --max_sample_number 512 --window_size 8 --base 10 --distributed_test --distributed_id $DIS_ID --distributed_number $TOTAL_DIS --resume --resume_from_merge  $KILL_COMMAND" Enter
   fi
 
@@ -196,6 +138,3 @@ elif [ "$TASK" = "babyai" ]; then
     tmux send-keys -t agent$TEST_ID "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES python downstream_test.py --dataset_name $TASK --dataset_port_id $ENV_PORT --planning_method codeact_agent_tree --model_name $MODEL_DIR --host $PORT --max_steps 30 --contrastive_method temperature --max_sample_number 256 --window_size 15 --distributed_test --distributed_id $DIS_ID --distributed_number $TOTAL_DIS --resume --resume_from_merge $KILL_COMMAND" Enter
   fi
 fi
-
-# Stop the server in serverTEST_ID and close the tmux window serverTEST_ID
-#tmux send-keys -t server$TEST_ID "tmux kill-session -t server$TEST_ID" Enter

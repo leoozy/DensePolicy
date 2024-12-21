@@ -35,6 +35,7 @@ def get_codeact_instruction(tool_descriptions, require_answer, answer_type, acti
         res += "You may use for-loops, if-statements, and other Python constructs when necessary.\n"
         res += "Be sure to print the final answer at the end of your code.\n"
         res += "You should begin your coding with 'Action:' and end it with 'End Action'.\n"
+        res += "I will provide you with the possible actions in the next step. You can use them as a reference."
         res += "Example: 'Action:\nvar1=func_name(argument_1)\nEnd Action'\n"
 
     res = res + "\nNow, let's get started!\n\n"

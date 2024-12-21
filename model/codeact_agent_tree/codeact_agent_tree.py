@@ -1,4 +1,5 @@
 import copy
+import pdb
 import random
 
 import math
@@ -635,10 +636,9 @@ class MCValue_MCTree(NBase_Tree):
                 return check_success_subsequence(row['run_index'], proposal)
             else:
                 return check_failed_subsequence(row['run_index'], proposal)
-
         for index_new in index_list_to_detect:
             run_detect_res = explored_result.apply(check_subsequence, proposal=index_new, axis=1)
-            if not run_detect_res.any():
+            if run_detect_res.empty:
                 res.append(index_new)
             else:
                 subsequence_df = explored_result.loc[run_detect_res]

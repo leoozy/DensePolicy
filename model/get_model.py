@@ -1,3 +1,4 @@
+import pdb
 from backbone.num_tokens import get_max_context_length
 from model.code_as_policy import (
     code_as_policy,
@@ -75,7 +76,6 @@ class model_loader:
 
         # default result recoder
         self.result_recoder = None
-
         if args.planning_method in ["py_agent"]:
             if args.eval_save_path is None:
                 args.eval_save_path = f'eval_results/{args.planning_method}.{args.model_name}.{str(args.check_actions).replace(" ", "_")}/{args.dataset_name + "train" if args.test_on_train else args.dataset_name}.{args.split_dataset_num}_split_{args.split_file}.{args.exp_id}.{args.distributed_id}.csv'
@@ -97,7 +97,8 @@ class model_loader:
 
         elif args.planning_method in ["code_as_policy"]:
             if args.eval_save_path is None:
-                args.eval_save_path = f'eval_results/{args.planning_method}.{args.model_name}/{args.dataset_name + "train" if args.test_on_train else args.dataset_name}.{args.hier}.{args.split_dataset_num}_split_{args.split_file}.{args.exp_id}.{args.distributed_id}.csv'
+                model_name = args.model_name.split("/")[-1]
+                args.eval_save_path = f'eval_results/{args.planning_method}.{model_name}/{args.dataset_name + "train" if args.test_on_train else args.dataset_name}.{args.hier}.{args.split_dataset_num}_split_{args.split_file}.{args.exp_id}.{args.distributed_id}.csv'
             init_prompt_dict = (
                 code_as_policy_prompt_hier_dict
                 if args.hier
@@ -333,7 +334,8 @@ class model_loader:
 
         elif args.planning_method in ['codeact_agent']:
             if args.eval_save_path is None:
-                args.eval_save_path = f"eval_results/{args.planning_method}.{args.model_name}/{args.max_steps}.{args.max_turn}.{args.in_context_number}_{args.examples_only}/{args.dataset_name}.{args.split_dataset_num}_split_{args.split_file}.{args.exp_id}.{args.distributed_id}.csv"
+                model_name = args.model_name.split("/")[-1]
+                args.eval_save_path = f"eval_results/{args.planning_method}.{model_name}.{args.aim}/{args.max_steps}.{args.max_turn}.{args.in_context_number}_{args.examples_only}/{args.dataset_name}.{args.split_dataset_num}_split_{args.split_file}.{args.exp_id}.{args.distributed_id}.csv"
 
             init_prompt_dict = get_codeact_agent_instruction_dict()
             in_context_example = get_codeact_in_context_example(args.dataset_name)

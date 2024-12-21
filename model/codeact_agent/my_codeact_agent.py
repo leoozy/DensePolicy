@@ -1,6 +1,5 @@
 import copy
 import json
-import pdb
 import random
 import re
 from typing import Optional, Mapping, Any
@@ -112,7 +111,7 @@ class codeact_agent:
 
         self.max_steps = max_steps
         self.max_turn = max_turn
-        #assert (self.max_steps is None) != (self.max_turn is None)
+        assert (self.max_steps is None) != (self.max_turn is None)
 
         self.init_prompt_dict = init_prompt_dict
         self.in_context_number = in_context_number
@@ -232,7 +231,7 @@ class codeact_agent:
 
         human_do = False
         if not human_do:
-            generation, _ = self.backbone_func(messages, stop=self.stop, temperature=temperature, max_tokens=1024)
+            generation, _ = self.backbone_func(messages, stop=self.stop, temperature=temperature)
 
         action_type, action, extra_info = self.action_parser(generation)
 

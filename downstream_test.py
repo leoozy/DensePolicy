@@ -1,5 +1,6 @@
 import argparse
 import os.path
+import pdb
 from random import seed
 
 import numpy as np
@@ -29,6 +30,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpt_request", action="store_true")
     parser.add_argument("--api_key", type=str, default=None)
     parser.add_argument("--host", type=str, default=None)
+    parser.add_argument("--aim", type=str, default=None)
 
     parser.add_argument(
         "--planning_method",

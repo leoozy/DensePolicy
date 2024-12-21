@@ -1,14 +1,15 @@
 import os
+import pdb
 import re
 
 import math
 import numpy as np
 import pandas as pd
 import torch
-from agentenv.envs import AcademiaEnvClient, AlfWorldEnvClient, BabyAIEnvClient, MazeEnvClient, WordleEnvClient, \
-    MovieEnvClient, \
-    SciworldEnvClient, SheetEnvClient, SqlGymEnvClient, TextCraftEnvClient, TodoEnvClient, WeatherEnvClient, \
-    WebarenaEnvClient, WebshopEnvClient
+# from agentenv.envs import AcademiaEnvClient, AlfWorldEnvClient, BabyAIEnvClient, MazeEnvClient, WordleEnvClient, \
+#     MovieEnvClient, \
+#     SciworldEnvClient, SheetEnvClient, SqlGymEnvClient, TextCraftEnvClient, TodoEnvClient, WeatherEnvClient, \
+#     WebarenaEnvClient, WebshopEnvClient
 from datasets import load_from_disk
 from torch.utils.data import Dataset, Subset
 from torch.utils.data import IterableDataset
@@ -25,10 +26,14 @@ try:
 except:
     pass
 # from dataset.agent_environments.environment.pddl_env.pddl_env import PDDL
-from dataset.agent_environments.environment.alfworld.alfworld_env_mine import (
-    AlfWorld,
-    AlfWorld_Reverse_PREFIXES, AlfWorld_PREFIXES
-)
+try:
+    from dataset.agent_environments.environment.alfworld.alfworld_env_mine import (
+        AlfWorld,
+        AlfWorld_Reverse_PREFIXES, AlfWorld_PREFIXES
+    )
+    IMPORT_ALFWORLD = True
+except:
+    IMPORT_ALFWORLD = False
 
 # from scripts.eval.m3tooleval.tasks import get_task_iterator
 
@@ -43,237 +48,237 @@ dataset_file_map = {
 }
 
 
-class PDDLDataset(Dataset):
-    def __init__(self, dataset_name):
-        self.dataset_name = dataset_name
-        directory_path = (
-            "dataset/agent_environments/environment/pddl_env/pddlgym/pddl/{}".format(
-                dataset_name
+# class PDDLDataset(Dataset):
+#     def __init__(self, dataset_name):
+#         self.dataset_name = dataset_name
+#         directory_path = (
+#             "dataset/agent_environments/environment/pddl_env/pddlgym/pddl/{}".format(
+#                 dataset_name
+#             )
+#         )
+#         file_count = len(
+#             [
+#                 name
+#                 for name in os.listdir(directory_path)
+#                 if os.path.isfile(os.path.join(directory_path, name))
+#             ]
+#         )
+#         self.data = list(range(file_count))
+#
+#     def __len__(self):
+#         return len(self.data)
+#
+#     def __getitem__(self, index):
+#         env = PDDL(problem_index=index, game_name=self.dataset_name)
+#         item = {"input": env, "target": None, "index": index}
+#         return item
+
+if IMPORT_ALFWORLD:
+    class AlfWorldDataset(Dataset):
+        def __init__(self, dataset_name):
+            self.dataset_name = dataset_name
+            directory_path = "dataset/alfworld/json_2.1.1/valid_unseen"
+            env_full = AlfWorld(
+                "eval_out_of_distribution",
+                base_config="dataset/agent_environments/environment/alfworld/base_config.yaml",
+                batch_size=1,
+                seed=1,
             )
-        )
-        file_count = len(
-            [
-                name
-                for name in os.listdir(directory_path)
-                if os.path.isfile(os.path.join(directory_path, name))
-            ]
-        )
-        self.data = list(range(file_count))
+            type_files = []
+            for file in env_full.env.gamefiles:
+                # the file form is xxx/pick_cool_then_place_in_recepxxx/trial_xxx/game.tw-pddl
+                if file.split("/")[-3].startswith(dataset_name):
+                    type_files.append(file)
+            if len(type_files) == 0:
+                raise ValueError("task type {} not found in file".format(dataset_name))
 
-    def __len__(self):
-        return len(self.data)
+            self.data = type_files
 
-    def __getitem__(self, index):
-        env = PDDL(problem_index=index, game_name=self.dataset_name)
-        item = {"input": env, "target": None, "index": index}
-        return item
+        def __len__(self):
+            return len(self.data)
 
+        def __getitem__(self, index):
+            # transform the env type from original alfworld to our implementation
+            alf_env = AlfWorld(
+                "eval_out_of_distribution",
+                base_config="dataset/agent_environments/environment/alfworld/base_config.yaml",
+                batch_size=1,
+                seed=1,
+                task_type=self.dataset_name,
+                id=index,
+            )
+            task_goal = alf_env.goal.replace('Your task is to: ', '')
 
-class AlfWorldDataset(Dataset):
-    def __init__(self, dataset_name):
-        self.dataset_name = dataset_name
-        directory_path = "dataset/alfworld/json_2.1.1/valid_unseen"
-        env_full = AlfWorld(
-            "eval_out_of_distribution",
-            base_config="dataset/agent_environments/environment/alfworld/base_config.yaml",
-            batch_size=1,
-            seed=1,
-        )
-        type_files = []
-        for file in env_full.env.gamefiles:
-            # the file form is xxx/pick_cool_then_place_in_recepxxx/trial_xxx/game.tw-pddl
-            if file.split("/")[-3].startswith(dataset_name):
-                type_files.append(file)
-        if len(type_files) == 0:
-            raise ValueError("task type {} not found in file".format(dataset_name))
+            def custom_env_reset_func(custom_env):
+                custom_env.reset()
+                return custom_env
 
-        self.data = type_files
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        # transform the env type from original alfworld to our implementation
-        alf_env = AlfWorld(
-            "eval_out_of_distribution",
-            base_config="dataset/agent_environments/environment/alfworld/base_config.yaml",
-            batch_size=1,
-            seed=1,
-            task_type=self.dataset_name,
-            id=index,
-        )
-        task_goal = alf_env.goal.replace('Your task is to: ', '')
-
-        def custom_env_reset_func(custom_env):
-            custom_env.reset()
-            return custom_env
-
-        def custom_env_execution_func(custom_env, action):
-            res_global_vars = execute_with_custom_env(custom_env, tools_dict['alfworld'], action)
-            custom_env = res_global_vars["env"]
-            state, reward, done, infos = custom_env._get_obs(), custom_env.reward, custom_env.done, custom_env.infos
-            env_info = {'done': done}
-            return custom_env, state, env_info
-
-        env = CodeActEnv(
-            name='AlfWorldEnv',
-            tools={},
-            tools_instruction=tools_instruction_dict['alfworld'],
-            goal=task_goal,
-            action_type='python',
-            require_answer=False,
-            custom_env=alf_env,
-            custom_env_reset_func=custom_env_reset_func,
-            custom_env_execution_func=custom_env_execution_func,
-            init_obs=alf_env.init_obs
-        )
-        # test env
-        # execution_result=[]
-        # execution_result.append(env.execute_action("goto('drawer 1')"))
-        # execution_result.append(env.execute_action("open('drawer 1')"))
-        # execution_result.append(env.execute_action("toggle('drawer 1')"))
-        # print(execution_result)
-        task_file = alf_env.file_path
-        task_type = [AlfWorld_PREFIXES[key] for key in AlfWorld_PREFIXES if key in task_file]
-        if len(task_type) > 0:
-            task_type = task_type[0]
-        else:
-            task_file = 'Unknown'
-        item = {"input": task_goal, 'env': env, "target": None, "index": index, "task_file": task_file,
-                "task_type": task_type}
-        return item
-
-
-client_map = {'academia': AcademiaEnvClient, 'alfworld': AlfWorldEnvClient, 'babyai': BabyAIEnvClient,
-              'maze': MazeEnvClient, 'wordle': WordleEnvClient, 'movie': MovieEnvClient,
-              'sciworld': SciworldEnvClient, 'sheet': SheetEnvClient, 'sqlgym': SqlGymEnvClient,
-              'textcraft': TextCraftEnvClient, 'todo': TodoEnvClient, 'weather': WeatherEnvClient,
-              'webarena': WebarenaEnvClient, 'webshop': WebshopEnvClient}
-
-dataset_length_map = {'alfworld': AlfWorldEnvClient, 'babyai': 40,
-                      'sciworld': 4639,
-                      'textcraft': TextCraftEnvClient, 'maze': 25, 'wordle': 100,
-                      'academia': AcademiaEnvClient, 'movie': MovieEnvClient, 'sheet': SheetEnvClient,
-                      'todo': TodoEnvClient, 'weather': WeatherEnvClient,
-                      'webarena': WebarenaEnvClient, 'webshop': 6909,
-                      'sqlgym': SqlGymEnvClient}
-
-
-class PortDataset(Dataset):
-    def __init__(self, dataset_name, dataset_port_id):
-        self.dataset_name = dataset_name
-        self.dataset_port_id = dataset_port_id
-        self.dataset_length = dataset_length_map[dataset_name]
-
-    def __len__(self):
-        return self.dataset_length
-
-    def __getitem__(self, index):
-        # Run the bash command
-        # cmd = "source activate agentenv-{} && {} --host 0.0.0.0 --port {}".format(self.dataset_name, self.dataset_name,
-        #                                                                          dataset_port_id)
-        # process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # stdout, stderr = process.communicate()
-        #
-        # # Check if there were any errors during the execution of the command
-        # if process.returncode != 0:
-        #     raise RuntimeError(f"Failed to execute command: {cmd}\nError: {stderr.decode()}")
-
-        # Create the BabyAIEnvClient object
-        if index >= self.dataset_length:
-            raise IndexError("index out of range")
-
-        if self.dataset_name in ['maze', 'wordle']:
-            URL = "http://127.0.0.1:{}/{}".format(self.dataset_port_id, self.dataset_name)
-        else:
-            URL = "http://127.0.0.1:{}".format(self.dataset_port_id)
-        client = client_map[self.dataset_name](**{
-            "env_server_base": URL,
-            "data_len": 200,  # not used
-            "timeout": 300,
-        })
-        # Reset the client with the given index
-        client.reset(index)
-        state = client.observe()
-        conversation = list(client.conversation_start)
-
-        # client.step("search [butt lifting light weight women's shorts high waist tummy control black 3x-large price<50.00]")
-        # client.step('search[pillows]')
-        def custom_env_reset_func(custom_env):
-            custom_env.reset(index)
-            custom_env.observe()
-            return custom_env
-
-        task_goal, init_obs, action_type = convert_agentgym_goal_and_initobs(self.dataset_name, state)
-
-        if action_type == 'python':
             def custom_env_execution_func(custom_env, action):
-                res_global_vars = execute_with_custom_env(custom_env, tools_dict[self.dataset_name], action)
+                res_global_vars = execute_with_custom_env(custom_env, tools_dict['alfworld'], action)
                 custom_env = res_global_vars["env"]
-                state, done = custom_env.info['observation'], custom_env.info['done']
+                state, reward, done, infos = custom_env._get_obs(), custom_env.reward, custom_env.done, custom_env.infos
                 env_info = {'done': done}
                 return custom_env, state, env_info
 
-        elif action_type == 'text':
-            if self.dataset_name not in ['webshop']:
-                def custom_env_execution_func(custom_env, action):
-                    custom_env.step(action)
-                    state, done = custom_env.info['observation'], custom_env.info['done']
-                    state = convert_agentgym_state(self.dataset_name, state)
-                    env_info = {'done': done}
-                    return custom_env, state, env_info
-            else:
-                def custom_env_execution_func(custom_env, action):
-                    stepout = custom_env.step(action)
-                    state, done = stepout.state, stepout.done
-                    state = convert_agentgym_state(self.dataset_name, state)
-                    env_info = {'done': done}
-                    return custom_env, state, env_info
-        else:
-            raise ValueError('action type {} not implied'.format(action_type))
-
-        env = CodeActEnv(
-            name=self.dataset_name,
-            tools={},
-            tools_instruction=tools_instruction_dict[self.dataset_name],
-            goal=task_goal,
-            action_type=action_type,
-            require_answer=False,
-            custom_env=client,
-            custom_env_reset_func=custom_env_reset_func,
-            custom_env_execution_func=custom_env_execution_func,
-            init_obs=init_obs
-        )
-        # env.execute_action('move down')
-        # env.execute_action('move_forward()')
-        item = {"input": task_goal, 'env': env, "target": None, "index": index}
-        return item
-
-
-class M3ToolEvalDataset(IterableDataset):
-    def __init__(self):
-        self.task_iterator = get_task_iterator()
-
-    def __iter__(self):
-        # transform the env type from original m3tooleval to our implementation
-        for index, env in enumerate(self.task_iterator):
-            tools_func = {}
-            tools_instruction = {}
-            for name, tool in env.tools.items():
-                tools_func[name] = tool.function
-                tools_instruction[name] = {'description': tool.description, 'fn_signature': tool.fn_signature}
-            env_mine = CodeActEnv(
-                name=env.name,
-                tools=tools_func,
-                tools_instruction=tools_instruction,
-                goal=env.instruction,
+            env = CodeActEnv(
+                name='AlfWorldEnv',
+                tools={},
+                tools_instruction=tools_instruction_dict['alfworld'],
+                goal=task_goal,
                 action_type='python',
-                require_answer=True,
-                default_answer_checker_reference=env.expected_output,
-                answer_type='number',
+                require_answer=False,
+                custom_env=alf_env,
+                custom_env_reset_func=custom_env_reset_func,
+                custom_env_execution_func=custom_env_execution_func,
+                init_obs=alf_env.init_obs
             )
-            item = {"input": env.instruction, "env": env_mine, "target": None, "index": index}
-            yield item
+            # test env
+            # execution_result=[]
+            # execution_result.append(env.execute_action("goto('drawer 1')"))
+            # execution_result.append(env.execute_action("open('drawer 1')"))
+            # execution_result.append(env.execute_action("toggle('drawer 1')"))
+            # print(execution_result)
+            task_file = alf_env.file_path
+            task_type = [AlfWorld_PREFIXES[key] for key in AlfWorld_PREFIXES if key in task_file]
+            if len(task_type) > 0:
+                task_type = task_type[0]
+            else:
+                task_file = 'Unknown'
+            item = {"input": task_goal, 'env': env, "target": None, "index": index, "task_file": task_file,
+                    "task_type": task_type}
+            return item
+
+
+# client_map = {'academia': AcademiaEnvClient, 'alfworld': AlfWorldEnvClient, 'babyai': BabyAIEnvClient,
+#               'maze': MazeEnvClient, 'wordle': WordleEnvClient, 'movie': MovieEnvClient,
+#               'sciworld': SciworldEnvClient, 'sheet': SheetEnvClient, 'sqlgym': SqlGymEnvClient,
+#               'textcraft': TextCraftEnvClient, 'todo': TodoEnvClient, 'weather': WeatherEnvClient,
+#               'webarena': WebarenaEnvClient, 'webshop': WebshopEnvClient}
+
+# dataset_length_map = {'alfworld': AlfWorldEnvClient, 'babyai': 40,
+#                       'sciworld': 4639,
+#                       'textcraft': TextCraftEnvClient, 'maze': 25, 'wordle': 100,
+#                       'academia': AcademiaEnvClient, 'movie': MovieEnvClient, 'sheet': SheetEnvClient,
+#                       'todo': TodoEnvClient, 'weather': WeatherEnvClient,
+#                       'webarena': WebarenaEnvClient, 'webshop': 6909,
+#                       'sqlgym': SqlGymEnvClient}
+
+
+# class PortDataset(Dataset):
+#     def __init__(self, dataset_name, dataset_port_id):
+#         self.dataset_name = dataset_name
+#         self.dataset_port_id = dataset_port_id
+#         self.dataset_length = dataset_length_map[dataset_name]
+#
+#     def __len__(self):
+#         return self.dataset_length
+#
+#     def __getitem__(self, index):
+#         # Run the bash command
+#         # cmd = "source activate agentenv-{} && {} --host 0.0.0.0 --port {}".format(self.dataset_name, self.dataset_name,
+#         #                                                                          dataset_port_id)
+#         # process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#         # stdout, stderr = process.communicate()
+#         #
+#         # # Check if there were any errors during the execution of the command
+#         # if process.returncode != 0:
+#         #     raise RuntimeError(f"Failed to execute command: {cmd}\nError: {stderr.decode()}")
+#
+#         # Create the BabyAIEnvClient object
+#         if index >= self.dataset_length:
+#             raise IndexError("index out of range")
+#
+#         if self.dataset_name in ['maze', 'wordle']:
+#             URL = "http://127.0.0.1:{}/{}".format(self.dataset_port_id, self.dataset_name)
+#         else:
+#             URL = "http://127.0.0.1:{}".format(self.dataset_port_id)
+#         client = client_map[self.dataset_name](**{
+#             "env_server_base": URL,
+#             "data_len": 200,  # not used
+#             "timeout": 300,
+#         })
+#         # Reset the client with the given index
+#         client.reset(index)
+#         state = client.observe()
+#         conversation = list(client.conversation_start)
+#
+#         # client.step("search [butt lifting light weight women's shorts high waist tummy control black 3x-large price<50.00]")
+#         # client.step('search[pillows]')
+#         def custom_env_reset_func(custom_env):
+#             custom_env.reset(index)
+#             custom_env.observe()
+#             return custom_env
+#
+#         task_goal, init_obs, action_type = convert_agentgym_goal_and_initobs(self.dataset_name, state)
+#
+#         if action_type == 'python':
+#             def custom_env_execution_func(custom_env, action):
+#                 res_global_vars = execute_with_custom_env(custom_env, tools_dict[self.dataset_name], action)
+#                 custom_env = res_global_vars["env"]
+#                 state, done = custom_env.info['observation'], custom_env.info['done']
+#                 env_info = {'done': done}
+#                 return custom_env, state, env_info
+#
+#         elif action_type == 'text':
+#             if self.dataset_name not in ['webshop']:
+#                 def custom_env_execution_func(custom_env, action):
+#                     custom_env.step(action)
+#                     state, done = custom_env.info['observation'], custom_env.info['done']
+#                     state = convert_agentgym_state(self.dataset_name, state)
+#                     env_info = {'done': done}
+#                     return custom_env, state, env_info
+#             else:
+#                 def custom_env_execution_func(custom_env, action):
+#                     stepout = custom_env.step(action)
+#                     state, done = stepout.state, stepout.done
+#                     state = convert_agentgym_state(self.dataset_name, state)
+#                     env_info = {'done': done}
+#                     return custom_env, state, env_info
+#         else:
+#             raise ValueError('action type {} not implied'.format(action_type))
+#
+#         env = CodeActEnv(
+#             name=self.dataset_name,
+#             tools={},
+#             tools_instruction=tools_instruction_dict[self.dataset_name],
+#             goal=task_goal,
+#             action_type=action_type,
+#             require_answer=False,
+#             custom_env=client,
+#             custom_env_reset_func=custom_env_reset_func,
+#             custom_env_execution_func=custom_env_execution_func,
+#             init_obs=init_obs
+#         )
+#         # env.execute_action('move down')
+#         # env.execute_action('move_forward()')
+#         item = {"input": task_goal, 'env': env, "target": None, "index": index}
+#         return item
+
+
+# class M3ToolEvalDataset(IterableDataset):
+#     def __init__(self):
+#         self.task_iterator = get_task_iterator()
+#
+#     def __iter__(self):
+#         # transform the env type from original m3tooleval to our implementation
+#         for index, env in enumerate(self.task_iterator):
+#             tools_func = {}
+#             tools_instruction = {}
+#             for name, tool in env.tools.items():
+#                 tools_func[name] = tool.function
+#                 tools_instruction[name] = {'description': tool.description, 'fn_signature': tool.fn_signature}
+#             env_mine = CodeActEnv(
+#                 name=env.name,
+#                 tools=tools_func,
+#                 tools_instruction=tools_instruction,
+#                 goal=env.instruction,
+#                 action_type='python',
+#                 require_answer=True,
+#                 default_answer_checker_reference=env.expected_output,
+#                 answer_type='number',
+#             )
+#             item = {"input": env.instruction, "env": env_mine, "target": None, "index": index}
+#             yield item
 
 
 INVALID_ANS = "[invalid]"
@@ -353,7 +358,8 @@ class MATHDataset(Dataset):
     def __init__(self):
         dataset = pd.read_json(
             os.path.join('dataset', 'eurus_eval', 'Math', 'math', "math_test_cleaned.json")).to_dict(orient="records")
-        self.data = dataset
+        dataset = dataset
+        self.data = dataset[:1400]
 
     def __len__(self):
         return len(self.data)
@@ -450,31 +456,49 @@ def get_dataset(args):
     data_cleaner = None
     test_index_key = "index"
 
-    if args.dataset_name in [
-        "baking",
-        "barman",
-        "blocks",
-        "block_medium",
-        "blockworld",
-        "doors",
-        "elevator",
-        "footwear",
-        "fridge",
-        "glibrearrangement",
-        "gripper",
-        "hanoi",
-        "mineraft",
-        "newspapers",
-        "spannerlearning",
-        "strage",
-        "termes",
-        "tireworld_test",
-        "trapnewspapers",
-        "tyreworld",
-    ]:
-        dataset = PDDLDataset(args.dataset_name)
-        evaluator = PDDLEvaluator
-        test_index_key = "index"
+    # if args.dataset_name in [
+    #     "baking",
+    #     "barman",
+    #     "blocks",
+    #     "block_medium",
+    #     "blockworld",
+    #     "doors",
+    #     "elevator",
+    #     "footwear",
+    #     "fridge",
+    #     "glibrearrangement",
+    #     "gripper",
+    #     "hanoi",
+    #     "mineraft",
+    #     "newspapers",
+    #     "spannerlearning",
+    #     "strage",
+    #     "termes",
+    #     "tireworld_test",
+    #     "trapnewspapers",
+    #     "tyreworld",
+    # ]:
+    #     dataset = PDDLDataset(args.dataset_name)
+    #     evaluator = PDDLEvaluator
+    #     test_index_key = "index"
+
+
+    #
+    # elif args.dataset_name in ['m3tooleval']:
+    #     dataset = M3ToolEvalDataset()
+    #     evaluator = AgentEvaluator
+    #     test_index_key = "index"
+
+    if args.dataset_name in ['gsm8k']:
+        dataset = GSM8kDataset()
+        evaluator = AgentEvaluator
+    elif args.dataset_name in ['math']:
+        dataset = MATHDataset()
+        evaluator = AgentEvaluator
+
+    elif args.dataset_name in ['humaneval']:
+        dataset = GSM8kDataset()
+        evaluator = AgentEvaluator
 
     elif args.dataset_name in [
         "alfworld_put",
@@ -491,26 +515,10 @@ def get_dataset(args):
         evaluator = AlfWorldEvaluator
         test_index_key = "index"
 
-    elif args.dataset_name in ['m3tooleval']:
-        dataset = M3ToolEvalDataset()
-        evaluator = AgentEvaluator
-        test_index_key = "index"
-
-    elif args.dataset_name in ['gsm8k']:
-        dataset = GSM8kDataset()
-        evaluator = AgentEvaluator
-    elif args.dataset_name in ['math']:
-        dataset = MATHDataset()
-        evaluator = AgentEvaluator
-
-    elif args.dataset_name in ['humaneval']:
-        dataset = GSM8kDataset()
-        evaluator = AgentEvaluator
-
-    elif args.dataset_name in ['babyai', 'maze', 'wordle', 'sciworld', 'sqlgym', 'textcraft', 'tool', 'webarena',
-                               'webshop']:
-        dataset = PortDataset(args.dataset_name, args.dataset_port_id)
-        evaluator = AgentEvaluator
+    # elif args.dataset_name in ['babyai', 'maze', 'wordle', 'sciworld', 'sqlgym', 'textcraft', 'tool', 'webarena',
+    #                            'webshop']:
+    #     dataset = PortDataset(args.dataset_name, args.dataset_port_id)
+    #     evaluator = AgentEvaluator
 
     else:
         raise ValueError("dataset not implied yet")

@@ -1,7 +1,8 @@
+import pdb
+
 import tiktoken
 from transformers import AutoTokenizer
 import os
-
 tiktoken_cache_dir = "./cache"
 os.environ["TIKTOKEN_CACHE_DIR"] = tiktoken_cache_dir
 
@@ -33,6 +34,8 @@ GLOBAL_HF_TOKENIZER = None
 
 
 def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613"):
+    print(f"model is {model}")
+    global GLOBAL_HF_TOKENIZER
     if 'gpt' in model:
         """Return the number of tokens used by a list of messages."""
         try:
@@ -82,11 +85,33 @@ def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613"):
                     num_tokens += tokens_per_name
         num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
     elif 'Llama' in model:
-        global GLOBAL_HF_TOKENIZER
         if GLOBAL_HF_TOKENIZER is None:
-            if 'Meta-Llama-3-8B-Instruct' in model:
+            if '8B' in model:
                 GLOBAL_HF_TOKENIZER = AutoTokenizer.from_pretrained(
-                    "/TreeDPO/models/Meta-Llama-3-8B-Instruct")
+                    "/storage/home/westlakeLab/zhangjunlei/models/Meta-Llama-3.1-8B-Instruct/llama3.1_8b_intruct/Meta-Llama-3.1-8B-Instruct")
+            elif "70B" in model:
+                GLOBAL_HF_TOKENIZER = AutoTokenizer.from_pretrained(
+                    "/storage/home/westlakeLab/zhangjunlei/models/Meta-Llama-3.1-70B-Instruct")
+            else:
+                raise NotImplementedError()
+        formatted_prompt = GLOBAL_HF_TOKENIZER.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
+        num_tokens = len(formatted_prompt)
+        print(num_tokens)
+    elif 'Qwen2.5' in model:
+        if GLOBAL_HF_TOKENIZER is None:
+            if '7B' in model:
+                GLOBAL_HF_TOKENIZER = AutoTokenizer.from_pretrained(
+                    "/storage/home/westlakeLab/zhangjunlei/models/Meta-Llama-3.1-8B-Instruct/llama3.1_8b_intruct/Meta-Llama-3.1-8B-Instruct")
+            else:
+                raise NotImplementedError()
+        formatted_prompt = GLOBAL_HF_TOKENIZER.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
+        num_tokens = len(formatted_prompt)
+        print(num_tokens)
+    elif 'Mistral' in model:
+        if GLOBAL_HF_TOKENIZER is None:
+            if "7B" in model:
+                GLOBAL_HF_TOKENIZER = AutoTokenizer.from_pretrained(
+                    "/storage/home/westlakeLab/zhangjunlei/models/Mistral-7B-Instruct-v0.1/mistralai/Mistral-7B-Instruct-v0.1")
             else:
                 raise NotImplementedError()
         formatted_prompt = GLOBAL_HF_TOKENIZER.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
@@ -94,6 +119,7 @@ def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613"):
         print(num_tokens)
     else:
         raise NotImplementedError(model)
+
     return num_tokens
 
 
@@ -108,12 +134,12 @@ def get_max_context_length(model_name):
         else:
             raise ValueError(
                 "Unimplied max length for model size {}".format(model_name))
-    elif model_name == 'Meta-Llama-3.1-405B-Instruct':
-        return 4096
-    elif "Llama-3" in model_name:
+    # elif model_name == 'Meta-Llama-3.1-405B-Instruct':
+    #     return 4096
+    elif "Llama-3" in model_name or "Qwen2.5" in model_name or "Mistral" in model_name:
         return 8192
-    elif "Mistral" in model_name or 'Llama' in model_name or 'deepseek' in model_name:
-        return 4096
+    # elif "Mistral" in model_name or 'Llama' in model_name or 'deepseek' in model_name:
+    #     return 4096
     else:
         raise ValueError(
             "Unimplied max length for base model name {}".format(model_name))

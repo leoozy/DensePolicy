@@ -1,6 +1,7 @@
 import copy
 import json
 import os.path
+import pdb
 from threading import Thread, BoundedSemaphore, Lock
 
 import pandas as pd
@@ -13,7 +14,6 @@ from sup_func.sup_func import pd_concat_ignore2, eval_pd_dataset, flat_row
 
 def answer_eval(response, dataset, data, evaluator=None, model_result_recoder=None):
     result = copy.copy(data)
-
     if response["res"] is None:
         score = 0
     else:
@@ -210,7 +210,6 @@ def test_single_sample(
         data, model, args, file_name, evaluator, is_parallel=False, ignore_error=False
 ):
     global scores, f, pbar
-
     if is_parallel or ignore_error:  # ignore error to release the process of parallel
         try:
             response = model(data)
@@ -235,6 +234,9 @@ def test_single_sample(
     pbar.set_description(f"Total Score : {100 * sum(scores) / len(scores)}")
 
     save_result_pd(file_name, result)
+    print("*" * 50)
+    print("Score: ", score)
+    print("*" * 50)
 
     if is_parallel:
         lock.release()
@@ -405,16 +407,15 @@ def training(dataloader, model, args):
 
 def testing(dataloader, model, args):
     global scores, pbar
-
     trial = 0
     test_index_key = dataloader["test_index_key"]
+    model_name = args.model_name.split("/")[-1]
 
     OUTPUT_PATH = (
         args.eval_save_path
         if args.eval_save_path is not None
-        else f"eval_results/{args.planning_method}.{args.model_name}/{args.dataset_name}.{args.split_dataset_num}_split_{args.split_file}.{args.exp_id}.{args.distributed_id}.csv"
+        else f"eval_results/{args.planning_method}.{model_name}/{args.dataset_name}.{args.split_dataset_num}_split_{args.split_file}.{args.exp_id}.{args.distributed_id}.csv"
     )
-
     print("Saving testing to {}".format(OUTPUT_PATH))
 
     if args.resume_path is not None:
@@ -469,7 +470,6 @@ def testing(dataloader, model, args):
     if not args.resume_data_level:
         if args.distributed_test:
             dataset = get_dataset_part(dataset, args.distributed_id, args.distributed_number)
-
     pbar = tqdm(dataset)
     threads = []
     for data in pbar:
@@ -501,6 +501,7 @@ def testing(dataloader, model, args):
                 dataloader["evaluator"],
                 ignore_error=args.ignore_error,
             )
+
         else:
             # if (
             #         str(data[test_index_key]) in executed_samples

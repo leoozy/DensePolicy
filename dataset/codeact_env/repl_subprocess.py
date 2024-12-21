@@ -1,9 +1,11 @@
 import ast
 import os
+import pty
 import re
 import signal
 import subprocess
 import textwrap
+import time
 import traceback
 from contextlib import contextmanager
 
@@ -69,6 +71,14 @@ def check_exit_in_code(code_string):
     return {'has_exit': visitor.has_exit, 'has_input': visitor.has_input}
 
 
+class TimeOutErrorLevel2(Exception):
+    """Custom exception for specific error scenarios."""
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code  # Optional attribute to store additional info
+
+
 class PythonREPL_subprocess():
     def __init__(self, timeout=5, max_memory=4096 * 1024 * 1024):
         self.timeout = timeout
@@ -77,6 +87,7 @@ class PythonREPL_subprocess():
 
     @contextmanager
     def time_limit(self, seconds):
+        # This management can only be used in single level, without Overlapping Signals
         def signal_handler(signum, frame):
             raise TimeoutError(f"Timed out after {seconds} seconds.")
 
@@ -88,13 +99,17 @@ class PythonREPL_subprocess():
             signal.alarm(0)  # Disable the alarm
 
     def create_python_subprocess(self):
-        conda_env_name = "agent_env"  # Replace with your conda environment name
+
         # python_cmd = f"source activate {conda_env_name} && python3 -i" #conda activate agent_env && python3 -i
         # python_cmd = f"conda run -n {conda_env_name} python3 -i"
         # python_cmd = "python3 -i"
         # python_cmd =['python3', '-i']
-        python_cmd = f"bash -i -c 'conda activate {conda_env_name} && python3 -i'" # bash -i -c 'conda activate agent_env && python3 -i'
-        python_cmd = f"bash -i -c 'export PATH=\"/root/anaconda3/bin/:$PATH\" && source activate {conda_env_name} && python3 -i'"  # bash -i -c 'export PATH=\"/root/anaconda3/bin/:$PATH\" && source activate agent_env && python3 -i'
+        conda_env_name = "rs"  # Replace with your conda environment name
+
+        # python_cmd = f"bash -i -c 'export PATH=\"/root/anaconda3/bin/:$PATH\" && source activate {conda_env_name} && python3 -i'"  # bash -i -c 'export PATH=\"/root/anaconda3/bin/:$PATH\" && source activate agent_env && python3 -i'
+        python_cmd = f"bash -i -c 'conda activate {conda_env_name} && python3 -i'"  # bash -i -c 'conda activate agent_env && python3 -i'
+        # python_cmd = f"conda activate {conda_env_name} && python3 -i"
+        print('Starting Command: ', python_cmd)
 
         self.process = subprocess.Popen(python_cmd,
                                         shell=True,
@@ -103,6 +118,23 @@ class PythonREPL_subprocess():
                                         stderr=subprocess.PIPE,
                                         text=True,
                                         preexec_fn=os.setsid)
+        # master, slave = pty.openpty()  # Create a pseudo-terminal
+        # self.process = subprocess.Popen(
+        #     ["bash", "-i", "-c", python_cmd],
+        #     stdin=slave,
+        #     stdout=slave,
+        #     stderr=slave,
+        #     preexec_fn=os.setsid,
+        #     text=True,
+        # )
+        # self.process = subprocess.Popen(
+        #     ["bash", "-i", "-c", python_cmd],  # Use bash directly
+        #     stdin=subprocess.PIPE,
+        #     stdout=subprocess.PIPE,
+        #     stderr=subprocess.PIPE,
+        #     text=True,
+        #     preexec_fn=os.setsid,
+        # )
         # self.process = subprocess.Popen(['python3', '-i'],  # -i for interactive mode
         #                                 stdin=subprocess.PIPE,
         #                                 stdout=subprocess.PIPE,
@@ -111,11 +143,11 @@ class PythonREPL_subprocess():
 
     def stop_python_subprocess(self):
         parent = psutil.Process(self.process.pid)
-        # print(self.process.pid)
+        print('Parent ID: ', self.process.pid)
         children = parent.children()
         if children:
             for child in children:
-                # print(child.pid)
+                print("Child ID: ", child.pid)
                 os.kill(child.pid, signal.SIGINT)
         os.kill(self.process.pid, signal.SIGINT)
         os.killpg(os.getpgid(self.process.pid), signal.SIGINT)
@@ -124,7 +156,7 @@ class PythonREPL_subprocess():
         self.stop_python_subprocess()
         self.process.stdin.close()
         self.process.terminate()
-        os.killpg(os.getpgid(self.process.pid), signal.SIGINT)
+        os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
         print('Process Closed')
         self.process.wait(timeout=10)
 
@@ -224,8 +256,9 @@ class PythonREPL_subprocess():
         return error
 
     def check_ready(self):
+        ready_check_time = 10
+
         print('Checking ready for execution...')
-        ready_check_time = 1
         key = str(np.random.rand())
         ready_check_code = READY_CHECK_CODE.format(key)
         self.clean()
@@ -245,16 +278,31 @@ class PythonREPL_subprocess():
 
     def stop_timeout_subprocess(self):
         print('Stopping Timeout Process...')
-        wait_time = 200
+        wait_time = 5
+        end_time = time.time() + wait_time
+        # try:
+        #     with self.time_limit(wait_time, level=2):
+        #         while True:
+        #             self.stop_python_subprocess()
+        #             if self.check_ready():
+        #                 print('Timeout Process Stopped')
+        #                 break
         try:
-            with self.time_limit(wait_time):
-                while True:
-                    self.stop_python_subprocess()
-                    if self.check_ready():
-                        break
-        except TimeoutError as e:
-            # todo directly kill the subprocess, and create a new subprocess
-            pass
+            while time.time() < end_time:
+                self.stop_python_subprocess()
+                if self.check_ready():
+                    print('Timeout Process Stopped')
+                    error_msg = f"TimeoutError: Timed out after {self.timeout} seconds."
+                    break
+            else:
+                error_msg = f"TimeoutError: Timed out after {self.timeout} seconds. The previous Interactive Python session was terminated, and a new session has been started. Please solve the task from the beginning."
+                raise TimeOutErrorLevel2(f"Level 2: Timed out after {wait_time} seconds.")
+
+        except TimeOutErrorLevel2 as e:
+            print('Timeout Process Still Running, Killing Previous and Opening a New Subprocess')
+            self.close()
+            self.create_python_subprocess()
+        return error_msg
 
     def output_wrap(self, output):
         output = output.strip()
@@ -268,7 +316,7 @@ class PythonREPL_subprocess():
         legal, feedback = self.code_legal_check(query)
         if not legal:
             return feedback
-        check_res= self.forbidden_code_check(query)
+        check_res = self.forbidden_code_check(query)
         if check_res['has_exit']:
             return 'Do not use exit() or sys.exit() in your code, as they will close the Interactive Python.'
         if check_res['has_input']:
@@ -281,8 +329,7 @@ class PythonREPL_subprocess():
         # print('Output:\n' + output)
         if not finished:
             print('TIME OUT')
-            self.stop_timeout_subprocess()
-            error_msg = f"TimeoutError: Timed out after {self.timeout} seconds."
+            error_msg = self.stop_timeout_subprocess()
             return error_msg.strip() + '\n'
 
         # Read the error

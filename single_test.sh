@@ -14,16 +14,14 @@ Start_test_id="$5"
 
 
 # Calculate the values
-Total_process=$(( Process_per_gpu * 8 ))
+Total_process=$(( Process_per_gpu * 1 ))
 Max_index=$(( Total_process - 1 ))
 
 
-
+gpu=0
+bash ./downstream_test.sh "$gpu" "'$gpu'" "$Model_name"
 #Launch vLLM Servers
-for i in {0..7}; do
-  gpu=$i
-  ./downstream_test.sh "$i" "'$gpu'" "$Model_name"
-done
+
 
 # Run downstream tasks
 for i in $(seq 0 $Max_index); do
@@ -32,5 +30,5 @@ for i in $(seq 0 $Max_index); do
     test_id=$(( i+Start_test_id ))
     dis_id=$(( i ))
 #    echo $test_id
-    ./downstream_test.sh "$test_id" "'0'" "$Model_name" "$Task_name" "$Method" "$port" "$dis_id" "$Total_process"
+    bash ./downstream_test.sh "$test_id" "'0'" "$Model_name" "$Task_name" "$Method" "$port" "$dis_id" "$Total_process"
 done
